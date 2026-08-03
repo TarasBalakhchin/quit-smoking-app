@@ -170,7 +170,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   Timer? _timer;
-  Duration _timeLeft = const Duration(minutes: 60); // Для старта ставим 60 минут
+  Duration _timeLeft = const Duration(minutes: 60);
   int _currentDayIndex = 0;
 
   @override
@@ -181,7 +181,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _startTimer() {
     _timer?.cancel();
-    // Грубый подсчет интервала: 15 часов бодрствования (900 минут) делим на кол-во сигарет
     int cigarettesToday = widget.plan[_currentDayIndex].cigarettesAllowed;
     int intervalMinutes = cigarettesToday > 0 ? (900 ~/ cigarettesToday) : 0;
     
@@ -195,13 +194,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _timeLeft = _timeLeft - const Duration(seconds: 1);
         });
       } else {
-        timer.cancel(); // Таймер дошел до нуля
+        timer.cancel();
       }
     });
   }
 
   void _onSmoked() {
-    // Пользователь покурил, перезапускаем таймер
     _startTimer();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -238,7 +236,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: Column(
         children: [
-          // БЛОК ТАЙМЕРА
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -267,8 +264,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 24),
                 if (!isFree)
                   ElevatedButton(
-                    onPressed: _timeLeft.inSeconds == 0 ? _onSmoked : _onSmoked, 
-                    // Пока разрешаем нажимать всегда, чтобы ты мог протестировать
+                    onPressed: _onSmoked,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                     ),
@@ -277,8 +273,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          
-          // БЛОК СПИСКА ДНЕЙ
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -302,7 +296,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     ),
                     subtitle: Padding(
-                      padding: const EdgeInsets.top: 8.0),
+                      padding: const EdgeInsets.only(top: 8.0), // <-- Исправлено здесь
                       child: Text('${day.phase}\n${day.note}', style: const TextStyle(height: 1.4)),
                     ),
                   ),
