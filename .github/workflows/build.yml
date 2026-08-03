@@ -1,0 +1,41 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Скачиваем код из репозитория
+        uses: actions/checkout@v4
+
+      - name: Настраиваем Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Настраиваем Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Создаем каркас приложения
+        run: flutter create my_app
+
+      - name: Вставляем наш код в приложение
+        run: cp lib/main.dart my_app/lib/main.dart
+
+      - name: Собираем APK
+        run: |
+          cd my_app
+          flutter build apk --release
+
+      - name: Выгружаем готовый APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: quit-smoking-app-apk
+          path: my_app/build/app/outputs/flutter-apk/app-release.apk
