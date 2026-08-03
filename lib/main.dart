@@ -5,7 +5,6 @@ void main() {
   runApp(const QuitSmokingApp());
 }
 
-// 1. Главный класс приложения и настройка темы
 class QuitSmokingApp extends StatelessWidget {
   const QuitSmokingApp({super.key});
 
@@ -13,11 +12,11 @@ class QuitSmokingApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Свобода от сигарет',
-      debugShowCheckedModeBanner: false, // Убираем плашку "DEBUG"
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1E1E2C), // Спокойный темно-синий фон
-        primaryColor: const Color(0xFF00BFA5), // Мятный акцентный цвет
+        scaffoldBackgroundColor: const Color(0xFF1E1E2C),
+        primaryColor: const Color(0xFF00BFA5),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF00BFA5),
@@ -35,7 +34,6 @@ class QuitSmokingApp extends StatelessWidget {
   }
 }
 
-// 2. Экран приветствия и ввода данных
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
 
@@ -47,7 +45,6 @@ class _StartScreenState extends State<StartScreen> {
   final TextEditingController _controller = TextEditingController();
   String? _errorMessage;
 
-  // Функция обработки нажатия на кнопку
   void _calculatePlan() {
     setState(() {
       _errorMessage = null;
@@ -69,13 +66,9 @@ class _StartScreenState extends State<StartScreen> {
       return;
     }
 
-    // Запускаем нашу логику из предыдущего шага
     final plan = generateQuitPlan(declaredAmount);
-    
-    // Берем данные для первого дня
     final firstDay = plan.first;
 
-    // Показываем всплывающее окно с результатом (позже здесь будет переход на главный экран)
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -106,7 +99,6 @@ class _StartScreenState extends State<StartScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // SafeArea защищает контент от челки iPhone и системных кнопок
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(32.0),
@@ -115,12 +107,11 @@ class _StartScreenState extends State<StartScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Icon(
-                Icons.spa_rounded, // Спокойная иконка (листик/лотос)
+                Icons.spa_rounded,
                 size: 80,
                 color: Color(0xFF00BFA5),
               ),
               const SizedBox(height: 32),
-              
               const Text(
                 'Давай будем честны.',
                 textAlign: TextAlign.center,
@@ -131,7 +122,6 @@ class _StartScreenState extends State<StartScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              
               const Text(
                 'Сколько сигарет в день ты выкуриваешь сейчас?\n\nНе приуменьшай. Нам нужна реальная цифра, чтобы составить комфортный график.',
                 textAlign: TextAlign.center,
@@ -142,14 +132,12 @@ class _StartScreenState extends State<StartScreen> {
                 ),
               ),
               const SizedBox(height: 48),
-
-              // Поле ввода
               TextField(
                 controller: _controller,
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly], // Только цифры
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   hintText: 'Например, 10',
                   hintStyle: const TextStyle(color: Colors.white24),
@@ -164,8 +152,6 @@ class _StartScreenState extends State<StartScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-
-              // Кнопка
               ElevatedButton(
                 onPressed: _calculatePlan,
                 child: const Text('Рассчитать мой план'),
@@ -178,7 +164,6 @@ class _StartScreenState extends State<StartScreen> {
   }
 }
 
-// 3. Наша логика генерации плана (из предыдущего ответа)
 class DailyPlan {
   final int dayNumber;
   final int cigarettesAllowed;
@@ -230,5 +215,3 @@ List<DailyPlan> generateQuitPlan(int declaredAmount) {
 
   return plan;
 }
-
-Следующим шагом нам нужно будет создать Главный экран (Dashboard), куда пользователь будет попадать после регистрации. Там будет таймер обратного отсчета до следующей сигареты и кнопка "Я покурил". Готов переходить к таймеру?
