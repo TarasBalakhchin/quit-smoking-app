@@ -29,6 +29,12 @@ jobs:
       - name: Вставляем наш код в приложение
         run: cp lib/main.dart my_app/lib/main.dart
 
+      - name: Добавляем библиотеку для памяти
+        run: |
+          cd my_app
+          flutter pub add shared_preferences
+          flutter pub get
+
       - name: Собираем APK
         run: |
           cd my_app
