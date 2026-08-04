@@ -29,10 +29,11 @@ jobs:
       - name: Вставляем наш код в приложение
         run: cp lib/main.dart my_app/lib/main.dart
 
-      - name: Добавляем библиотеку для памяти
+      - name: Добавляем библиотеки (память и уведомления)
         run: |
           cd my_app
           flutter pub add shared_preferences
+          flutter pub add awesome_notifications
           flutter pub get
 
       - name: Собираем APK
