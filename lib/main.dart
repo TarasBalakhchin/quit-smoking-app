@@ -2,13 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:awesome_notifications/awesome_notifications.dart'; // Наша новая библиотека!
 
-// Главная функция теперь асинхронная, чтобы успеть прочитать память до отрисовки
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
   
-  // Проверяем, есть ли уже сохраненный план
+  // ИНИЦИАЛИЗАЦИЯ УВЕДОМЛЕНИЙ
+  AwesomeNotifications().initialize(
+    null, // Используем стандартную иконку приложения
+    [
+      NotificationChannel(
+        channelKey: 'timer_channel',
+        channelName: 'Таймер сигарет',
+        channelDescription: 'Уведомления о том, что пора курить',
+        defaultColor: const Color(0xFF00BFA5),
+        importance: NotificationImportance.High,
+        channelShowBadge: true,
+      )
+    ],
+  );
+
+  final prefs = await SharedPreferences.getInstance();
   final isActive = prefs.getBool('is_active') ?? false;
   final declaredAmount = prefs.getInt('declared_amount') ?? 10;
   
@@ -42,7 +56,6 @@ class QuitSmokingApp extends StatelessWidget {
           ),
         ),
       ),
-      // Если план уже есть, идем сразу на главный экран!
       home: isActive ? DashboardScreen(plan: plan) : const StartScreen(),
     );
   }
@@ -79,13 +92,12 @@ class _StartScreenState extends State<StartScreen> {
     final plan = generateQuitPlan(declaredAmount);
     final firstDay = plan.first;
 
-    // СОХРАНЯЕМ ДАННЫЕ В ПАМЯТЬ ПРИ РЕГИСТРАЦИИ
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_active', true);
     await prefs.setInt('declared_amount', declaredAmount);
     await prefs.setInt('current_day_index', 0);
     await prefs.setInt('cigarettes_left', firstDay.cigarettesAllowed);
-    await prefs.remove('target_time'); // Очищаем старый таймер, если был
+    await prefs.remove('target_time'); 
 
     if (!mounted) return;
 
@@ -182,11 +194,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // ПРОСИМ РАЗРЕШЕНИЕ НА УВЕДОМЛЕНИЯ ПРИ ЗАПУСКЕ
+    AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
+      if (!isAllowed) {
+        AwesomeNotifications().requestPermissionToSendNotifications();
+      }
+    });
+
     _cigarettesLeftToday = widget.plan[0].cigarettesAllowed;
-    _loadDataFromMemory(); // Загружаем прогресс при старте экрана
+    _loadDataFromMemory();
   }
 
-  // ЗАГРУЗКА ИЗ ПАМЯТИ
   Future<void> _loadDataFromMemory() async {
     final prefs = await SharedPreferences.getInstance();
     
@@ -198,7 +217,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (savedTime != null) {
         _targetTime = DateTime.parse(savedTime);
       } else {
-        // Если таймер еще не запускался
         _setNewTargetTime(prefs);
       }
       _isLoading = false;
@@ -207,19 +225,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _startTimerTick();
   }
 
-  // УСТАНОВКА НОВОГО ВРЕМЕНИ
   void _setNewTargetTime(SharedPreferences prefs) {
     int cigarettesToday = widget.plan[_currentDayIndex].cigarettesAllowed;
     int intervalMinutes = cigarettesToday > 0 ? (900 ~/ cigarettesToday) : 0;
     
-    // ВНИМАНИЕ: Если нужно протестировать быстрее, поменяй minutes: на seconds:
+    // Для тестов можешь временно поменять minutes: на seconds:
     _targetTime = DateTime.now().add(Duration(minutes: intervalMinutes));
-    
-    // Сохраняем это точное время в память телефона
     prefs.setString('target_time', _targetTime!.toIso8601String());
+
+    // УБИРАЕМ СТАРЫЕ УВЕДОМЛЕНИЯ И СТАВИМ НОВОЕ ФОНОВОЕ
+    AwesomeNotifications().cancelAll();
+    
+    if (cigarettesToday > 0) {
+      AwesomeNotifications().createNotification(
+        content: NotificationContent(
+          id: 10,
+          channelKey: 'timer_channel',
+          title: 'Время пришло! 🚬',
+          body: 'Таймер завершен. Если хочешь — можешь покурить.',
+          wakeUpScreen: true, // Зажжет экран
+        ),
+        schedule: NotificationCalendar.fromDate(
+          date: _targetTime!,
+          allowWhileIdle: true, // Отработает даже в энергосберегающем режиме
+          preciseAlarm: true,   // Отработает точно в срок
+        ),
+      );
+    }
   }
 
-  // ТИКАНИЕ ТАЙМЕРА (Просто обновляет интерфейс)
   void _startTimerTick() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -254,17 +288,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     });
 
-    // Сохраняем прогресс после каждой сигареты
     await prefs.setInt('current_day_index', _currentDayIndex);
     await prefs.setInt('cigarettes_left', _cigarettesLeftToday);
     
-    _setNewTargetTime(prefs); // Создаем и сохраняем новый таймер
+    _setNewTargetTime(prefs);
   }
 
-  // КНОПКА СБРОСА (Для тестов)
   void _resetApp() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Стираем всю память
+    await prefs.clear();
+    AwesomeNotifications().cancelAll(); // Очищаем уведомления при сбросе
     if (!mounted) return;
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const StartScreen()));
   }
@@ -299,7 +332,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.restart_alt, color: Colors.white54),
             tooltip: 'Сбросить прогресс',
-            onPressed: _resetApp, // Кнопка сброса в правом верхнем углу
+            onPressed: _resetApp,
           )
         ],
       ),
