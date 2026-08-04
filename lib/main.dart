@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:async'; // Библиотека для работы с таймером
+import 'dart:async';
 
 void main() {
   runApp(const QuitSmokingApp());
@@ -49,9 +49,7 @@ class _StartScreenState extends State<StartScreen> {
   String? _errorMessage;
 
   void _calculatePlan() {
-    setState(() {
-      _errorMessage = null;
-    });
+    setState(() { _errorMessage = null; });
 
     final inputText = _controller.text.trim();
     if (inputText.isEmpty) {
@@ -82,13 +80,10 @@ class _StartScreenState extends State<StartScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Закрываем всплывающее окно
-              // ПЕРЕХОДИМ НА ГЛАВНЫЙ ЭКРАН, передавая туда наш план
+              Navigator.pop(context);
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => DashboardScreen(plan: plan),
-                ),
+                MaterialPageRoute(builder: (context) => DashboardScreen(plan: plan)),
               );
             },
             child: const Text('Понятно, я готов', style: TextStyle(color: Color(0xFF00BFA5))),
@@ -116,17 +111,9 @@ class _StartScreenState extends State<StartScreen> {
             children: [
               const Icon(Icons.spa_rounded, size: 80, color: Color(0xFF00BFA5)),
               const SizedBox(height: 32),
-              const Text(
-                'Давай будем честны.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              const Text('Давай будем честны.', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 16),
-              const Text(
-                'Сколько сигарет в день ты выкуриваешь сейчас?\n\nНам нужна реальная цифра, чтобы составить комфортный график.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.white70, height: 1.5),
-              ),
+              const Text('Сколько сигарет в день ты выкуриваешь сейчас?\n\nНам нужна реальная цифра, чтобы составить комфортный график.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.white70, height: 1.5)),
               const SizedBox(height: 48),
               TextField(
                 controller: _controller,
@@ -145,10 +132,7 @@ class _StartScreenState extends State<StartScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: _calculatePlan,
-                child: const Text('Рассчитать мой план'),
-              ),
+              ElevatedButton(onPressed: _calculatePlan, child: const Text('Рассчитать мой план')),
             ],
           ),
         ),
@@ -161,7 +145,6 @@ class _StartScreenState extends State<StartScreen> {
 
 class DashboardScreen extends StatefulWidget {
   final List<DailyPlan> plan;
-
   const DashboardScreen({super.key, required this.plan});
 
   @override
@@ -170,43 +153,76 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   Timer? _timer;
-  Duration _timeLeft = const Duration(minutes: 60);
+  DateTime? _targetTime;
+  Duration _timeLeft = Duration.zero;
+  
   int _currentDayIndex = 0;
+  late int _cigarettesLeftToday;
 
   @override
   void initState() {
     super.initState();
+    // При старте берем лимит сигарет из первого дня
+    _cigarettesLeftToday = widget.plan[_currentDayIndex].cigarettesAllowed;
     _startTimer();
   }
 
   void _startTimer() {
-    _timer?.cancel();
     int cigarettesToday = widget.plan[_currentDayIndex].cigarettesAllowed;
+    
+    // Формула: 900 минут бодрствования делим на количество сигарет
+    // ВНИМАНИЕ: Если хочешь быстро протестировать таймер, поменяй слово "minutes" на "seconds" в строке ниже!
     int intervalMinutes = cigarettesToday > 0 ? (900 ~/ cigarettesToday) : 0;
     
-    setState(() {
-      _timeLeft = Duration(minutes: intervalMinutes);
-    });
+    // Вычисляем точное время следующей сигареты (это позволяет таймеру "работать" в фоне)
+    _targetTime = DateTime.now().add(Duration(minutes: intervalMinutes));
 
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_timeLeft.inSeconds > 0) {
+      final now = DateTime.now();
+      if (_targetTime != null && _targetTime!.isAfter(now)) {
         setState(() {
-          _timeLeft = _timeLeft - const Duration(seconds: 1);
+          _timeLeft = _targetTime!.difference(now);
         });
       } else {
-        timer.cancel();
+        setState(() {
+          _timeLeft = Duration.zero;
+        });
       }
     });
   }
 
   void _onSmoked() {
-    _startTimer();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Отлично. Теперь ждем окончания следующего таймера.'),
-        backgroundColor: Color(0xFF00BFA5),
-      ),
-    );
+    setState(() {
+      // Уменьшаем счетчик сигарет
+      if (_cigarettesLeftToday > 0) {
+        _cigarettesLeftToday--;
+      }
+      
+      // Если сигареты на сегодня кончились, переходим на следующий день
+      if (_cigarettesLeftToday <= 0 && _currentDayIndex < widget.plan.length - 1) {
+        _currentDayIndex++;
+        _cigarettesLeftToday = widget.plan[_currentDayIndex].cigarettesAllowed;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('День завершен! Завтра новый этап.'),
+            backgroundColor: Color(0xFF00BFA5),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Осталось сигарет на сегодня: $_cigarettesLeftToday'),
+            backgroundColor: const Color(0xFF00BFA5),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    });
+
+    _startTimer(); // Перезапускаем таймер до следующей сигареты
   }
 
   @override
@@ -236,15 +252,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: Column(
         children: [
+          // БЛОК ТАЙМЕРА
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: const BoxDecoration(
               color: Color(0xFF2A2D3E),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(32),
-                bottomRight: Radius.circular(32),
-              ),
+              borderRadius: BorderRadius.only(bottomLeft: Radius.circular(32), bottomRight: Radius.circular(32)),
             ),
             child: Column(
               children: [
@@ -265,14 +279,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (!isFree)
                   ElevatedButton(
                     onPressed: _onSmoked,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                    ),
-                    child: const Text('Я покурил'),
+                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16)),
+                    child: Text('Я покурил (Осталось: $_cigarettesLeftToday)'),
                   ),
               ],
             ),
           ),
+          
+          // БЛОК СПИСКА ДНЕЙ
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -280,25 +294,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
               itemBuilder: (context, index) {
                 final day = widget.plan[index];
                 final isToday = index == _currentDayIndex;
+                final isPassed = index < _currentDayIndex; // День уже прошел
                 
                 return Card(
-                  color: isToday ? const Color(0xFF00BFA5).withOpacity(0.2) : const Color(0xFF2A2D3E),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  color: isToday ? const Color(0xFF00BFA5).withOpacity(0.15) : const Color(0xFF2A2D3E),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: isToday ? const BorderSide(color: Color(0xFF00BFA5), width: 1.5) : BorderSide.none,
+                  ),
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     leading: CircleAvatar(
-                      backgroundColor: isToday ? const Color(0xFF00BFA5) : Colors.white12,
-                      child: Text('${day.dayNumber}', style: const TextStyle(color: Colors.white)),
+                      backgroundColor: isPassed ? Colors.green : (isToday ? const Color(0xFF00BFA5) : Colors.white12),
+                      child: isPassed 
+                        ? const Icon(Icons.check, color: Colors.white) 
+                        : Text('${day.dayNumber}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                     title: Text(
-                      '${day.cigarettesAllowed} сигарет(ы)',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                      'День ${day.dayNumber}: ${day.cigarettesAllowed} сигарет',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isPassed ? Colors.white54 : Colors.white),
                     ),
                     subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 8.0), // <-- Исправлено здесь
-                      child: Text('${day.phase}\n${day.note}', style: const TextStyle(height: 1.4)),
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text('${day.phase}\n${day.note}', style: TextStyle(height: 1.4, color: isPassed ? Colors.white38 : Colors.white70)),
                     ),
+                    trailing: isToday && day.cigarettesAllowed > 0
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text('Осталось', style: TextStyle(fontSize: 10, color: Colors.white70)),
+                            Text('$_cigarettesLeftToday', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00BFA5))),
+                          ],
+                        )
+                      : null,
                   ),
                 );
               },
