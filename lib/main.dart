@@ -1,16 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  runApp(const QuitSmokingApp());
+// Главная функция теперь асинхронная, чтобы успеть прочитать память до отрисовки
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  
+  // Проверяем, есть ли уже сохраненный план
+  final isActive = prefs.getBool('is_active') ?? false;
+  final declaredAmount = prefs.getInt('declared_amount') ?? 10;
+  
+  runApp(QuitSmokingApp(isActive: isActive, declaredAmount: declaredAmount));
 }
 
 class QuitSmokingApp extends StatelessWidget {
-  const QuitSmokingApp({super.key});
+  final bool isActive;
+  final int declaredAmount;
+
+  const QuitSmokingApp({super.key, required this.isActive, required this.declaredAmount});
 
   @override
   Widget build(BuildContext context) {
+    final plan = generateQuitPlan(declaredAmount);
+
     return MaterialApp(
       title: 'Свобода от сигарет',
       debugShowCheckedModeBanner: false,
@@ -22,15 +36,14 @@ class QuitSmokingApp extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF00BFA5),
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             padding: const EdgeInsets.symmetric(vertical: 16),
             textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ),
       ),
-      home: const StartScreen(),
+      // Если план уже есть, идем сразу на главный экран!
+      home: isActive ? DashboardScreen(plan: plan) : const StartScreen(),
     );
   }
 }
@@ -48,7 +61,7 @@ class _StartScreenState extends State<StartScreen> {
   final TextEditingController _controller = TextEditingController();
   String? _errorMessage;
 
-  void _calculatePlan() {
+  void _calculatePlan() async {
     setState(() { _errorMessage = null; });
 
     final inputText = _controller.text.trim();
@@ -66,15 +79,24 @@ class _StartScreenState extends State<StartScreen> {
     final plan = generateQuitPlan(declaredAmount);
     final firstDay = plan.first;
 
+    // СОХРАНЯЕМ ДАННЫЕ В ПАМЯТЬ ПРИ РЕГИСТРАЦИИ
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_active', true);
+    await prefs.setInt('declared_amount', declaredAmount);
+    await prefs.setInt('current_day_index', 0);
+    await prefs.setInt('cigarettes_left', firstDay.cigarettesAllowed);
+    await prefs.remove('target_time'); // Очищаем старый таймер, если был
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A2D3E),
         title: const Text('План готов 🚀', style: TextStyle(color: Colors.white)),
         content: Text(
-          'Ты указал $declaredAmount сигарет.\n\n'
-          'Чтобы снять начальный стресс, завтра твой лимит составит: ${firstDay.cigarettesAllowed} сигарет.\n\n'
-          'Расслабься, мы никуда не спешим. Твоя задача — просто курить по таймеру.',
+          'Ты указал $declaredAmount сигарет.\n\nЗавтра твой лимит составит: ${firstDay.cigarettesAllowed} сигарет.\n\nТвоя задача — просто курить по таймеру.',
           style: const TextStyle(fontSize: 16, height: 1.5),
         ),
         actions: [
@@ -113,7 +135,7 @@ class _StartScreenState extends State<StartScreen> {
               const SizedBox(height: 32),
               const Text('Давай будем честны.', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 16),
-              const Text('Сколько сигарет в день ты выкуриваешь сейчас?\n\nНам нужна реальная цифра, чтобы составить комфортный график.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.white70, height: 1.5)),
+              const Text('Сколько сигарет в день ты выкуриваешь сейчас?', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.white70)),
               const SizedBox(height: 48),
               TextField(
                 controller: _controller,
@@ -123,12 +145,9 @@ class _StartScreenState extends State<StartScreen> {
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   hintText: 'Например, 10',
-                  hintStyle: const TextStyle(color: Colors.white24),
-                  errorText: _errorMessage,
                   filled: true,
                   fillColor: const Color(0xFF2A2D3E),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 20),
                 ),
               ),
               const SizedBox(height: 32),
@@ -141,7 +160,7 @@ class _StartScreenState extends State<StartScreen> {
   }
 }
 
-// ---------------- ГЛАВНЫЙ ЭКРАН (ТАЙМЕР И СПИСОК) ----------------
+// ---------------- ГЛАВНЫЙ ЭКРАН ----------------
 
 class DashboardScreen extends StatefulWidget {
   final List<DailyPlan> plan;
@@ -158,25 +177,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
   
   int _currentDayIndex = 0;
   late int _cigarettesLeftToday;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    // При старте берем лимит сигарет из первого дня
-    _cigarettesLeftToday = widget.plan[_currentDayIndex].cigarettesAllowed;
-    _startTimer();
+    _cigarettesLeftToday = widget.plan[0].cigarettesAllowed;
+    _loadDataFromMemory(); // Загружаем прогресс при старте экрана
   }
 
-  void _startTimer() {
-    int cigarettesToday = widget.plan[_currentDayIndex].cigarettesAllowed;
+  // ЗАГРУЗКА ИЗ ПАМЯТИ
+  Future<void> _loadDataFromMemory() async {
+    final prefs = await SharedPreferences.getInstance();
     
-    // Формула: 900 минут бодрствования делим на количество сигарет
-    // ВНИМАНИЕ: Если хочешь быстро протестировать таймер, поменяй слово "minutes" на "seconds" в строке ниже!
+    setState(() {
+      _currentDayIndex = prefs.getInt('current_day_index') ?? 0;
+      _cigarettesLeftToday = prefs.getInt('cigarettes_left') ?? widget.plan[_currentDayIndex].cigarettesAllowed;
+      
+      final savedTime = prefs.getString('target_time');
+      if (savedTime != null) {
+        _targetTime = DateTime.parse(savedTime);
+      } else {
+        // Если таймер еще не запускался
+        _setNewTargetTime(prefs);
+      }
+      _isLoading = false;
+    });
+
+    _startTimerTick();
+  }
+
+  // УСТАНОВКА НОВОГО ВРЕМЕНИ
+  void _setNewTargetTime(SharedPreferences prefs) {
+    int cigarettesToday = widget.plan[_currentDayIndex].cigarettesAllowed;
     int intervalMinutes = cigarettesToday > 0 ? (900 ~/ cigarettesToday) : 0;
     
-    // Вычисляем точное время следующей сигареты (это позволяет таймеру "работать" в фоне)
+    // ВНИМАНИЕ: Если нужно протестировать быстрее, поменяй minutes: на seconds:
     _targetTime = DateTime.now().add(Duration(minutes: intervalMinutes));
+    
+    // Сохраняем это точное время в память телефона
+    prefs.setString('target_time', _targetTime!.toIso8601String());
+  }
 
+  // ТИКАНИЕ ТАЙМЕРА (Просто обновляет интерфейс)
+  void _startTimerTick() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       final now = DateTime.now();
@@ -192,37 +236,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void _onSmoked() {
+  void _onSmoked() async {
+    final prefs = await SharedPreferences.getInstance();
+
     setState(() {
-      // Уменьшаем счетчик сигарет
       if (_cigarettesLeftToday > 0) {
         _cigarettesLeftToday--;
       }
       
-      // Если сигареты на сегодня кончились, переходим на следующий день
       if (_cigarettesLeftToday <= 0 && _currentDayIndex < widget.plan.length - 1) {
         _currentDayIndex++;
         _cigarettesLeftToday = widget.plan[_currentDayIndex].cigarettesAllowed;
         
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('День завершен! Завтра новый этап.'),
-            backgroundColor: Color(0xFF00BFA5),
-            duration: Duration(seconds: 4),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Осталось сигарет на сегодня: $_cigarettesLeftToday'),
-            backgroundColor: const Color(0xFF00BFA5),
-            duration: const Duration(seconds: 2),
-          ),
+          const SnackBar(content: Text('День завершен! Завтра новый этап.'), backgroundColor: Color(0xFF00BFA5)),
         );
       }
     });
 
-    _startTimer(); // Перезапускаем таймер до следующей сигареты
+    // Сохраняем прогресс после каждой сигареты
+    await prefs.setInt('current_day_index', _currentDayIndex);
+    await prefs.setInt('cigarettes_left', _cigarettesLeftToday);
+    
+    _setNewTargetTime(prefs); // Создаем и сохраняем новый таймер
+  }
+
+  // КНОПКА СБРОСА (Для тестов)
+  void _resetApp() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear(); // Стираем всю память
+    if (!mounted) return;
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const StartScreen()));
   }
 
   @override
@@ -241,6 +285,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
     final todayPlan = widget.plan[_currentDayIndex];
     final isFree = todayPlan.cigarettesAllowed == 0;
 
@@ -249,10 +295,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const Text('Твой график'),
         backgroundColor: const Color(0xFF1E1E2C),
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.restart_alt, color: Colors.white54),
+            tooltip: 'Сбросить прогресс',
+            onPressed: _resetApp, // Кнопка сброса в правом верхнем углу
+          )
+        ],
       ),
       body: Column(
         children: [
-          // БЛОК ТАЙМЕРА
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -286,7 +338,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           
-          // БЛОК СПИСКА ДНЕЙ
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -294,7 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               itemBuilder: (context, index) {
                 final day = widget.plan[index];
                 final isToday = index == _currentDayIndex;
-                final isPassed = index < _currentDayIndex; // День уже прошел
+                final isPassed = index < _currentDayIndex;
                 
                 return Card(
                   color: isToday ? const Color(0xFF00BFA5).withOpacity(0.15) : const Color(0xFF2A2D3E),
@@ -339,7 +390,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-// ---------------- ЛОГИКА (Генератор) ----------------
+// ---------------- ЛОГИКА ----------------
 
 class DailyPlan {
   final int dayNumber;
@@ -347,12 +398,7 @@ class DailyPlan {
   final String phase;
   final String note;
 
-  DailyPlan({
-    required this.dayNumber,
-    required this.cigarettesAllowed,
-    required this.phase,
-    this.note = "",
-  });
+  DailyPlan({required this.dayNumber, required this.cigarettesAllowed, required this.phase, this.note = ""});
 }
 
 List<DailyPlan> generateQuitPlan(int declaredAmount) {
