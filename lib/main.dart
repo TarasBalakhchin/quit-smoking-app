@@ -11,14 +11,14 @@ void main() async {
     null,
     [
       NotificationChannel(
-        channelKey: 'timer_channel_2', // Новый канал с максимальным приоритетом
+        channelKey: 'timer_channel_2', 
         channelName: 'Таймер сигарет',
         channelDescription: 'Уведомления о том, что пора курить',
         defaultColor: const Color(0xFF00BFA5),
-        importance: NotificationImportance.Max, // ЗАСТАВЛЯЕТ окно всплывать сверху!
+        importance: NotificationImportance.Max, 
         playSound: true,
         enableVibration: true,
-        criticalAlerts: true, // Пробивает энергосбережение
+        criticalAlerts: true, 
       )
     ],
   );
@@ -182,7 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _currentDayIndex = 0;
   late int _cigarettesLeftToday;
   bool _isLoading = true;
-  bool _isReadyAlertShown = false; // Флаг, чтобы окно показалось только 1 раз
+  bool _isReadyAlertShown = false; 
 
   @override
   void initState() {
@@ -220,9 +220,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     int cigarettesToday = widget.plan[_currentDayIndex].cigarettesAllowed;
     int intervalMinutes = cigarettesToday > 0 ? (900 ~/ cigarettesToday) : 0;
     
-    // ВНИМАНИЕ: Для теста я поставил 10 секунд! 
-    // Когда наиграешься, замени (seconds: 10) обратно на (minutes: intervalMinutes)
-    _targetTime = DateTime.now().add(const Duration(minutes: intervalMinutes)); 
+    // ИСПРАВЛЕНИЕ ЗДЕСЬ: Убрано слово const перед Duration
+    _targetTime = DateTime.now().add(Duration(minutes: intervalMinutes)); 
     
     prefs.setString('target_time', _targetTime!.toIso8601String());
 
@@ -232,11 +231,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: 10,
-          channelKey: 'timer_channel_2', // Наш новый канал
+          channelKey: 'timer_channel_2', 
           title: 'Время пришло! 🚬',
           body: 'Таймер завершен. Можешь сделать перекур.',
           wakeUpScreen: true,
-          category: NotificationCategory.Alarm, // Android воспримет это как будильник
+          category: NotificationCategory.Alarm, 
         ),
         schedule: NotificationCalendar.fromDate(
           date: _targetTime!,
@@ -247,7 +246,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // Показываем окно прямо ВНУТРИ приложения, если оно открыто
   void _showInAppAlert() {
     if (!mounted) return;
     showDialog(
@@ -273,14 +271,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (_targetTime != null && _targetTime!.isAfter(now)) {
         setState(() {
           _timeLeft = _targetTime!.difference(now);
-          _isReadyAlertShown = false; // Таймер идет, сбрасываем окно
+          _isReadyAlertShown = false; 
         });
       } else {
         setState(() {
           _timeLeft = Duration.zero;
         });
         
-        // Если таймер дошел до 0 и мы еще не показывали окно - показываем!
         if (!_isReadyAlertShown && _targetTime != null && _cigarettesLeftToday > 0) {
           _isReadyAlertShown = true;
           _showInAppAlert();
