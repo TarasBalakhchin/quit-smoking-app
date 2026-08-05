@@ -2,22 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:awesome_notifications/awesome_notifications.dart'; // Наша новая библиотека!
+import 'package:awesome_notifications/awesome_notifications.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // ИНИЦИАЛИЗАЦИЯ УВЕДОМЛЕНИЙ
   AwesomeNotifications().initialize(
-    null, // Используем стандартную иконку приложения
+    null,
     [
       NotificationChannel(
-        channelKey: 'timer_channel',
+        channelKey: 'timer_channel_2', // Новый канал с максимальным приоритетом
         channelName: 'Таймер сигарет',
         channelDescription: 'Уведомления о том, что пора курить',
         defaultColor: const Color(0xFF00BFA5),
-        importance: NotificationImportance.High,
-        channelShowBadge: true,
+        importance: NotificationImportance.Max, // ЗАСТАВЛЯЕТ окно всплывать сверху!
+        playSound: true,
+        enableVibration: true,
+        criticalAlerts: true, // Пробивает энергосбережение
       )
     ],
   );
@@ -62,7 +63,6 @@ class QuitSmokingApp extends StatelessWidget {
 }
 
 // ---------------- СТАРТОВЫЙ ЭКРАН ----------------
-
 class StartScreen extends StatefulWidget {
   const StartScreen({super.key});
 
@@ -76,7 +76,6 @@ class _StartScreenState extends State<StartScreen> {
 
   void _calculatePlan() async {
     setState(() { _errorMessage = null; });
-
     final inputText = _controller.text.trim();
     if (inputText.isEmpty) {
       setState(() { _errorMessage = 'Пожалуйста, введи количество'; });
@@ -128,12 +127,6 @@ class _StartScreenState extends State<StartScreen> {
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
@@ -173,7 +166,6 @@ class _StartScreenState extends State<StartScreen> {
 }
 
 // ---------------- ГЛАВНЫЙ ЭКРАН ----------------
-
 class DashboardScreen extends StatefulWidget {
   final List<DailyPlan> plan;
   const DashboardScreen({super.key, required this.plan});
@@ -190,12 +182,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _currentDayIndex = 0;
   late int _cigarettesLeftToday;
   bool _isLoading = true;
+  bool _isReadyAlertShown = false; // Флаг, чтобы окно показалось только 1 раз
 
   @override
   void initState() {
     super.initState();
-    
-    // ПРОСИМ РАЗРЕШЕНИЕ НА УВЕДОМЛЕНИЯ ПРИ ЗАПУСКЕ
     AwesomeNotifications().isNotificationAllowed().then((isAllowed) {
       if (!isAllowed) {
         AwesomeNotifications().requestPermissionToSendNotifications();
@@ -229,29 +220,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
     int cigarettesToday = widget.plan[_currentDayIndex].cigarettesAllowed;
     int intervalMinutes = cigarettesToday > 0 ? (900 ~/ cigarettesToday) : 0;
     
-    // Для тестов можешь временно поменять minutes: на seconds:
-    _targetTime = DateTime.now().add(Duration(minutes: intervalMinutes));
+    // ВНИМАНИЕ: Для теста я поставил 10 секунд! 
+    // Когда наиграешься, замени (seconds: 10) обратно на (minutes: intervalMinutes)
+    _targetTime = DateTime.now().add(const Duration(seconds: 10)); 
+    
     prefs.setString('target_time', _targetTime!.toIso8601String());
 
-    // УБИРАЕМ СТАРЫЕ УВЕДОМЛЕНИЯ И СТАВИМ НОВОЕ ФОНОВОЕ
     AwesomeNotifications().cancelAll();
     
     if (cigarettesToday > 0) {
       AwesomeNotifications().createNotification(
         content: NotificationContent(
           id: 10,
-          channelKey: 'timer_channel',
+          channelKey: 'timer_channel_2', // Наш новый канал
           title: 'Время пришло! 🚬',
-          body: 'Таймер завершен. Если хочешь — можешь покурить.',
-          wakeUpScreen: true, // Зажжет экран
+          body: 'Таймер завершен. Можешь сделать перекур.',
+          wakeUpScreen: true,
+          category: NotificationCategory.Alarm, // Android воспримет это как будильник
         ),
         schedule: NotificationCalendar.fromDate(
           date: _targetTime!,
-          allowWhileIdle: true, // Отработает даже в энергосберегающем режиме
-          preciseAlarm: true,   // Отработает точно в срок
+          allowWhileIdle: true, 
+          preciseAlarm: true,   
         ),
       );
     }
+  }
+
+  // Показываем окно прямо ВНУТРИ приложения, если оно открыто
+  void _showInAppAlert() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2D3E),
+        title: const Text('Таймер вышел! 🚬', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+        content: const Text('Можно сделать перекур.', style: TextStyle(color: Colors.white70, fontSize: 18)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Понятно', style: TextStyle(color: Color(0xFF00BFA5), fontSize: 18)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _startTimerTick() {
@@ -261,11 +273,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (_targetTime != null && _targetTime!.isAfter(now)) {
         setState(() {
           _timeLeft = _targetTime!.difference(now);
+          _isReadyAlertShown = false; // Таймер идет, сбрасываем окно
         });
       } else {
         setState(() {
           _timeLeft = Duration.zero;
         });
+        
+        // Если таймер дошел до 0 и мы еще не показывали окно - показываем!
+        if (!_isReadyAlertShown && _targetTime != null && _cigarettesLeftToday > 0) {
+          _isReadyAlertShown = true;
+          _showInAppAlert();
+        }
       }
     });
   }
@@ -297,7 +316,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _resetApp() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
-    AwesomeNotifications().cancelAll(); // Очищаем уведомления при сбросе
+    AwesomeNotifications().cancelAll();
     if (!mounted) return;
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const StartScreen()));
   }
@@ -331,7 +350,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.restart_alt, color: Colors.white54),
-            tooltip: 'Сбросить прогресс',
             onPressed: _resetApp,
           )
         ],
@@ -424,7 +442,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 // ---------------- ЛОГИКА ----------------
-
 class DailyPlan {
   final int dayNumber;
   final int cigarettesAllowed;
@@ -437,7 +454,6 @@ class DailyPlan {
 List<DailyPlan> generateQuitPlan(int declaredAmount) {
   List<DailyPlan> plan = [];
   int currentDay = 1;
-
   int actualStart = declaredAmount + (declaredAmount ~/ 2);
   if (actualStart < 7) actualStart = 7;
   int currentAmount = actualStart;
