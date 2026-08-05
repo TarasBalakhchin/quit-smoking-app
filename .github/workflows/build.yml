@@ -26,10 +26,14 @@ jobs:
       - name: Создаем каркас приложения
         run: flutter create my_app
 
-      - name: Вставляем наш код в приложение
+      - name: Вставляем наш код
         run: cp lib/main.dart my_app/lib/main.dart
 
-      - name: Добавляем библиотеки (память и уведомления)
+      - name: Добавляем системные разрешения в AndroidManifest
+        run: |
+          sed -i 's/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android">/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"\/>\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM"\/>\n    <uses-permission android:name="android.permission.VIBRATE"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>/g' my_app/android/app/src/main/AndroidManifest.xml
+
+      - name: Добавляем библиотеки
         run: |
           cd my_app
           flutter pub add shared_preferences
