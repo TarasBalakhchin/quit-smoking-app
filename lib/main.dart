@@ -222,7 +222,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     
     // ВНИМАНИЕ: Для теста я поставил 10 секунд! 
     // Когда наиграешься, замени (seconds: 10) обратно на (minutes: intervalMinutes)
-    _targetTime = DateTime.now().add(const Duration(seconds: 10)); 
+    _targetTime = DateTime.now().add(const Duration(minutes: intervalMinute)); 
     
     prefs.setString('target_time', _targetTime!.toIso8601String());
 
